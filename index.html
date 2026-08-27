@@ -166,6 +166,8 @@
     .btn-success:hover { opacity: 0.9; }
     .btn-purple { background: #5c6bc0; color: white; }
     .btn-purple:hover { opacity: 0.9; }
+    .btn-orange { background: #ff6f00; color: white; }
+    .btn-orange:hover { opacity: 0.9; }
     .code-box {
       background: rgba(255,255,255,0.5); padding: 8px; border-radius: 8px;
       font-family: monospace; font-size: 9px; word-break: break-all;
@@ -226,44 +228,27 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.06);
       max-width: 100%;
     }
-    .scan-btn {
-      background: #7c4dff;
-      color: white;
+    .btn-row {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .btn-row button {
+      flex: 1;
+      padding: 6px 10px;
       border: none;
-      padding: 8px 16px;
-      border-radius: 10px;
-      font-size: 13px;
+      border-radius: 8px;
+      font-size: 11px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
-      width: 100%;
-      margin-top: 4px;
     }
-    .scan-btn:hover { opacity: 0.9; }
-    .scan-btn:active { transform: scale(0.97); }
-    .file-input-wrapper {
-      position: relative;
-      overflow: hidden;
-      display: inline-block;
-      width: 100%;
-      margin-top: 4px;
+    .btn-row .btn-paste { background: #7c4dff; color: white; }
+    .btn-row .btn-paste:hover { opacity: 0.9; }
+    .btn-row .btn-file { background: #ff6f00; color: white; }
+    .btn-row .btn-file:hover { opacity: 0.9; }
+    .file-input-hidden {
+      display: none;
     }
-    .file-input-wrapper input[type=file] {
-      position: absolute;
-      left: 0;
-      top: 0;
-      opacity: 0;
-      width: 100%;
-      height: 100%;
-      cursor: pointer;
-    }
-    .file-input-wrapper .btn {
-      width: 100%;
-      text-align: center;
-      background: #ff6f00;
-      color: white;
-    }
-    .file-input-wrapper .btn:hover { opacity: 0.9; }
   </style>
 </head>
 <body>
@@ -301,10 +286,11 @@
       <button class="btn btn-success" id="processOfferBtn" style="width:100%;">📥 Вставить Offer</button>
       <textarea id="offerInput" placeholder="Вставьте Offer..."></textarea>
       
-      <div class="file-input-wrapper">
-        <button class="btn" style="background:#ff6f00; color:white; border:none; padding:8px 16px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; width:100%;">📷 Загрузить QR-код</button>
-        <input type="file" id="qrFileInput" accept="image/*">
+      <div class="btn-row">
+        <button class="btn-paste" id="pasteOfferBtn">📋 Вставить</button>
+        <button class="btn-file" id="fileOfferBtn">📷 QR-файл</button>
       </div>
+      <input type="file" id="qrFileInput" class="file-input-hidden" accept="image/*">
       
       <div class="code-box" id="answerDisplay" style="color:#b8a89a;">Ожидание Offer</div>
       <button class="btn btn-purple" id="copyAnswerBtn" style="width:100%;" disabled>📋 Копировать</button>
@@ -392,6 +378,8 @@
   const qrContainer = $('qrContainer');
   const processOfferBtn = $('processOfferBtn');
   const offerInput = $('offerInput');
+  const pasteOfferBtn = $('pasteOfferBtn');
+  const fileOfferBtn = $('fileOfferBtn');
   const qrFileInput = $('qrFileInput');
   const answerDisplay = $('answerDisplay');
   const copyAnswerBtn = $('copyAnswerBtn');
@@ -527,22 +515,40 @@
     return false;
   }
   
-  // --- Чтение QR-кода из изображения ---
+  // --- Чтение QR-кода из изображения (улучшенное) ---
   function readQRFromFile(file) {
     const reader = new FileReader();
     reader.onload = function(e) {
       const img = new Image();
       img.onload = function() {
         try {
+          // Увеличиваем размер canvas для лучшего распознавания
+          const scale = 2;
           const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
           const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           
           if (typeof jsQR !== 'undefined') {
-            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            // Пробуем распознать
+            let code = jsQR(imageData.data, imageData.width, imageData.height);
+            
+            // Если не распозналось, пробуем с инвертированными цветами
+            if (!code) {
+              const invertedData = new Uint8ClampedArray(imageData.data);
+              for (let i = 0; i < invertedData.length; i += 4) {
+                invertedData[i] = 255 - invertedData[i];
+                invertedData[i+1] = 255 - invertedData[i+1];
+                invertedData[i+2] = 255 - invertedData[i+2];
+              }
+              code = jsQR(invertedData, imageData.width, imageData.height);
+            }
+            
             if (code && code.data) {
               const text = code.data;
               if (text.includes('offer')) {
@@ -555,7 +561,7 @@
                 showToast('❌ Это не Offer. Отсканируйте QR-код Offer');
               }
             } else {
-              showToast('❌ QR-код не найден на изображении');
+              showToast('❌ QR-код не найден. Попробуйте скопировать текст вручную');
             }
           } else {
             showToast('❌ Библиотека jsQR не загружена');
@@ -574,6 +580,24 @@
       showToast('❌ Ошибка чтения файла');
     };
     reader.readAsDataURL(file);
+  }
+  
+  // --- Вставка из буфера обмена ---
+  async function pasteFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.includes('offer')) {
+        offerInput.value = text;
+        showToast('✅ Offer вставлен! Нажмите "Вставить Offer"');
+        setTimeout(function() {
+          processOfferBtn.click();
+        }, 500);
+      } else {
+        showToast('❌ В буфере нет Offer');
+      }
+    } catch(e) {
+      showToast('❌ Нет доступа к буферу обмена');
+    }
   }
   
   // --- Обработка сообщений ---
@@ -851,13 +875,22 @@
     setTimeout(() => { processOfferBtn.textContent = '📥 Вставить Offer'; }, 2000);
   });
   
-  // --- Обработка загрузки QR-кода ---
+  // --- Вставка из буфера обмена ---
+  pasteOfferBtn.addEventListener('click', function() {
+    pasteFromClipboard();
+  });
+  
+  // --- Загрузка QR-файла ---
+  fileOfferBtn.addEventListener('click', function() {
+    qrFileInput.click();
+  });
+  
   qrFileInput.addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (file) {
+      showToast('⏳ Обработка QR-кода...');
       readQRFromFile(file);
     }
-    // Сбрасываем input, чтобы можно было загрузить тот же файл снова
     this.value = '';
   });
   
@@ -937,7 +970,10 @@
   
   console.log('📱 Для подключения:');
   console.log('  1. Один нажимает "Создать Offer"');
-  console.log('  2. Другой загружает скриншот QR-кода или вставляет Offer');
+  console.log('  2. Другой:');
+  console.log('     - нажимает "Вставить" (если Offer в буфере)');
+  console.log('     - или загружает скриншот QR-кода');
+  console.log('     - или вставляет Offer вручную');
   console.log('  3. Первый вставляет Answer');
   console.log('🌐 Используются TURN+STUN серверы');
   

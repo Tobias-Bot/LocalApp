@@ -165,8 +165,6 @@
     .btn-success:hover { opacity: 0.9; }
     .btn-purple { background: #5c6bc0; color: white; }
     .btn-purple:hover { opacity: 0.9; }
-    .btn-danger { background: rgba(239,83,80,0.1); color: #ef5350; }
-    .btn-danger:hover { background: rgba(239,83,80,0.2); }
     .code-box {
       background: rgba(255,255,255,0.5); padding: 8px; border-radius: 8px;
       font-family: monospace; font-size: 9px; word-break: break-all;
@@ -206,6 +204,16 @@
       text-align: center;
       margin-top: 4px;
     }
+    .info-box {
+      background: rgba(66,165,245,0.08);
+      border: 1px solid rgba(66,165,245,0.15);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 11px;
+      color: #0d47a1;
+      text-align: center;
+      margin-top: 4px;
+    }
   </style>
 </head>
 <body>
@@ -222,22 +230,24 @@
 <div class="card">
   <div class="device-info">
     🆔 Ваш ID: <span class="id" id="myIdDisplay">---</span>
-    <span style="margin-left:auto; font-size:11px; color:#8a7a6a;" id="modeInfo">📡 Режим: вкладки + ручной</span>
+    <span style="margin-left:auto; font-size:11px; color:#8a7a6a;" id="modeInfo">🌐 TURN + STUN</span>
   </div>
-  <div class="connection-status searching" id="connectionStatus">Выберите способ подключения</div>
   
-  <div style="display:flex; gap:8px; margin: 8px 0;">
-    <button class="btn btn-primary" id="createOfferBtn" style="flex:1;">📤 Создать Offer</button>
-    <button class="btn btn-success" id="processOfferBtn" style="flex:1;">📥 Вставить Offer</button>
+  <div class="info-box">
+    🔄 Используются публичные TURN-серверы для гарантированного соединения
   </div>
+  
+  <div class="connection-status searching" id="connectionStatus">Нажмите "Создать Offer"</div>
   
   <div class="grid-2">
     <div>
-      <div class="code-box" id="offerDisplay" style="color:#b8a89a;">Нажмите "Создать Offer"</div>
+      <button class="btn btn-primary" id="createOfferBtn" style="width:100%;">📤 Создать Offer</button>
+      <div class="code-box" id="offerDisplay" style="color:#b8a89a;">Нажмите кнопку</div>
       <button class="btn btn-purple" id="copyOfferBtn" style="width:100%;" disabled>📋 Копировать</button>
       <div class="hint">Скопируйте и отправьте другому устройству</div>
     </div>
     <div>
+      <button class="btn btn-success" id="processOfferBtn" style="width:100%;">📥 Вставить Offer</button>
       <textarea id="offerInput" placeholder="Вставьте Offer..."></textarea>
       <div class="code-box" id="answerDisplay" style="color:#b8a89a;">Ожидание Offer</div>
       <button class="btn btn-purple" id="copyAnswerBtn" style="width:100%;" disabled>📋 Копировать</button>
@@ -298,6 +308,8 @@
   let isInitiator = false;
   let currentOffer = null;
   let currentAnswer = null;
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT = 3;
   
   // --- BroadcastChannel для вкладок ---
   let channel = null;
@@ -510,24 +522,54 @@
     };
   }
   
+  // --- Получение ICE-серверов ---
+  function getIceServers() {
+    return {
+      iceServers: [
+        // STUN-серверы Google
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        // TURN-серверы (ретрансляция)
+        {
+          urls: [
+            'turn:turn.anyfirewall.com:443?transport=tcp',
+            'turn:turn.anyfirewall.com:3478?transport=udp'
+          ],
+          username: 'webrtc',
+          credential: 'webrtc'
+        },
+        {
+          urls: 'turn:turn.cheapwebrtc.com:443?transport=tcp',
+          username: 'webrtc',
+          credential: 'webrtc'
+        },
+        // Дополнительные TURN-серверы
+        {
+          urls: 'turn:turn.viagenie.ca:3478?transport=udp',
+          username: 'webrtc@live.com',
+          credential: 'muazkh'
+        }
+      ],
+      iceCandidatePoolSize: 10
+    };
+  }
+  
   // --- Создание Offer ---
   function createOffer() {
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
     isConnected = false;
     isInitiator = true;
+    reconnectAttempts = 0;
     setStatus('connecting', 'Создание Offer...');
     updatePeers();
     
     const p = new SimplePeer({
       initiator: true,
       trickle: false,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' }
-        ]
-      }
+      config: getIceServers()
     });
     
     p.on('signal', function(data) {
@@ -541,6 +583,7 @@
     
     p.on('connect', function() {
       isConnected = true;
+      reconnectAttempts = 0;
       setStatus('online', 'Подключено');
       updatePeers();
       showToast('🎉 Соединение установлено!');
@@ -573,19 +616,14 @@
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
     isConnected = false;
     isInitiator = false;
+    reconnectAttempts = 0;
     setStatus('connecting', 'Обработка Offer...');
     updatePeers();
     
     const p = new SimplePeer({
       initiator: false,
       trickle: false,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' }
-        ]
-      }
+      config: getIceServers()
     });
     
     let answered = false;
@@ -602,6 +640,7 @@
     
     p.on('connect', function() {
       isConnected = true;
+      reconnectAttempts = 0;
       setStatus('online', 'Подключено');
       updatePeers();
       showToast('🎉 Соединение установлено!');
@@ -772,6 +811,7 @@
   console.log('  2. Другой вставляет Offer → получает Answer');
   console.log('  3. Первый вставляет Answer → соединение установлено');
   console.log('💡 Между вкладками синхронизация автоматическая');
+  console.log('🌐 Используются TURN-серверы для гарантированного соединения');
   
 })();
 </script>

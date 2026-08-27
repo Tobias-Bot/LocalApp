@@ -241,6 +241,29 @@
     }
     .scan-btn:hover { opacity: 0.9; }
     .scan-btn:active { transform: scale(0.97); }
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .file-input-wrapper input[type=file] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+    .file-input-wrapper .btn {
+      width: 100%;
+      text-align: center;
+      background: #ff6f00;
+      color: white;
+    }
+    .file-input-wrapper .btn:hover { opacity: 0.9; }
   </style>
 </head>
 <body>
@@ -277,7 +300,12 @@
     <div>
       <button class="btn btn-success" id="processOfferBtn" style="width:100%;">📥 Вставить Offer</button>
       <textarea id="offerInput" placeholder="Вставьте Offer..."></textarea>
-      <button class="scan-btn" id="scanOfferBtn">📷 Сканировать QR</button>
+      
+      <div class="file-input-wrapper">
+        <button class="btn" style="background:#ff6f00; color:white; border:none; padding:8px 16px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; width:100%;">📷 Загрузить QR-код</button>
+        <input type="file" id="qrFileInput" accept="image/*">
+      </div>
+      
       <div class="code-box" id="answerDisplay" style="color:#b8a89a;">Ожидание Offer</div>
       <button class="btn btn-purple" id="copyAnswerBtn" style="width:100%;" disabled>📋 Копировать</button>
       <div class="hint">Скопируйте Answer и отправьте создателю</div>
@@ -316,7 +344,6 @@
   </div>
 </div>
 
-<!-- Подключаем библиотеки -->
 <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
@@ -341,8 +368,6 @@
   let isInitiator = false;
   let currentOffer = null;
   let currentAnswer = null;
-  let reconnectAttempts = 0;
-  const MAX_RECONNECT = 3;
   
   // --- BroadcastChannel для вкладок ---
   let channel = null;
@@ -361,19 +386,17 @@
   const connectedCount = $('connectedCount');
   const connectionStatus = $('connectionStatus');
   const myIdDisplay = $('myIdDisplay');
-  const modeInfo = $('modeInfo');
   const createOfferBtn = $('createOfferBtn');
   const copyOfferBtn = $('copyOfferBtn');
   const offerDisplay = $('offerDisplay');
   const qrContainer = $('qrContainer');
   const processOfferBtn = $('processOfferBtn');
   const offerInput = $('offerInput');
-  const scanOfferBtn = $('scanOfferBtn');
+  const qrFileInput = $('qrFileInput');
   const answerDisplay = $('answerDisplay');
   const copyAnswerBtn = $('copyAnswerBtn');
   const answerInput = $('answerInput');
   const submitAnswerBtn = $('submitAnswerBtn');
-  const tabModeInfo = $('tabModeInfo');
   const todoList = $('todoList');
   const todoInput = $('todoInput');
   const addTodoBtn = $('addTodoBtn');
@@ -497,119 +520,60 @@
           correctLevel: QRCode.CorrectLevel.H
         });
         return true;
-      } else {
-        qrContainer.innerHTML = '<span style="color:#b8a89a;font-size:12px;">⚠️ QR-код недоступен</span>';
       }
     } catch(e) {
       console.error('QR error:', e);
-      qrContainer.innerHTML = '<span style="color:#b8a89a;font-size:12px;">⚠️ Ошибка QR</span>';
     }
     return false;
   }
   
-  // --- Сканирование QR-кода ---
-  function scanQR() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showToast('❌ Камера не поддерживается');
-      return;
-    }
-    
-    const video = document.createElement('video');
-    video.style.position = 'fixed';
-    video.style.top = '0';
-    video.style.left = '0';
-    video.style.width = '100%';
-    video.style.height = '100%';
-    video.style.objectFit = 'cover';
-    video.style.zIndex = '9999';
-    video.style.background = '#000';
-    document.body.appendChild(video);
-    
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = '✕ Отмена';
-    cancelBtn.style.position = 'fixed';
-    cancelBtn.style.bottom = '40px';
-    cancelBtn.style.left = '50%';
-    cancelBtn.style.transform = 'translateX(-50%)';
-    cancelBtn.style.zIndex = '10000';
-    cancelBtn.style.padding = '12px 30px';
-    cancelBtn.style.border = 'none';
-    cancelBtn.style.borderRadius = '12px';
-    cancelBtn.style.background = '#ef5350';
-    cancelBtn.style.color = 'white';
-    cancelBtn.style.fontSize = '16px';
-    cancelBtn.style.fontWeight = '600';
-    cancelBtn.style.cursor = 'pointer';
-    cancelBtn.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)';
-    document.body.appendChild(cancelBtn);
-    
-    let stream = null;
-    let scanning = true;
-    
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .then(function(s) {
-        stream = s;
-        video.srcObject = s;
-        video.play();
-        showToast('📷 Наведите на QR-код');
-        
-        const scanInterval = setInterval(function() {
-          if (!scanning) {
-            clearInterval(scanInterval);
-            return;
-          }
-          
+  // --- Чтение QR-кода из изображения ---
+  function readQRFromFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const img = new Image();
+      img.onload = function() {
+        try {
           const canvas = document.createElement('canvas');
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
+          canvas.width = img.width;
+          canvas.height = img.height;
           const ctx = canvas.getContext('2d');
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
+          ctx.drawImage(img, 0, 0);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, canvas.width, canvas.height);
           
-          if (code && code.data) {
-            scanning = false;
-            clearInterval(scanInterval);
-            
-            if (stream) {
-              stream.getTracks().forEach(t => t.stop());
-            }
-            video.remove();
-            cancelBtn.remove();
-            
-            const text = code.data;
-            // Проверяем, что это Offer
-            if (text.includes('offer')) {
-              offerInput.value = text;
-              showToast('✅ Offer найден! Нажмите "Вставить Offer"');
-              // Автоматически обрабатываем Offer
-              setTimeout(function() {
-                processOfferBtn.click();
-              }, 500);
+          if (typeof jsQR !== 'undefined') {
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            if (code && code.data) {
+              const text = code.data;
+              if (text.includes('offer')) {
+                offerInput.value = text;
+                showToast('✅ QR-код распознан! Нажмите "Вставить Offer"');
+                setTimeout(function() {
+                  processOfferBtn.click();
+                }, 500);
+              } else {
+                showToast('❌ Это не Offer. Отсканируйте QR-код Offer');
+              }
             } else {
-              showToast('❌ Это не Offer. Отсканируйте QR-код Offer');
+              showToast('❌ QR-код не найден на изображении');
             }
+          } else {
+            showToast('❌ Библиотека jsQR не загружена');
           }
-        }, 500);
-        
-        cancelBtn.addEventListener('click', function() {
-          scanning = false;
-          clearInterval(scanInterval);
-          if (stream) {
-            stream.getTracks().forEach(t => t.stop());
-          }
-          video.remove();
-          cancelBtn.remove();
-          showToast('❌ Сканирование отменено');
-        });
-      })
-      .catch(function(err) {
-        console.error('Ошибка камеры:', err);
-        showToast('❌ Не удалось получить доступ к камере');
-        video.remove();
-        cancelBtn.remove();
-      });
+        } catch(err) {
+          console.error('Ошибка распознавания:', err);
+          showToast('❌ Ошибка распознавания QR-кода');
+        }
+      };
+      img.onerror = function() {
+        showToast('❌ Не удалось загрузить изображение');
+      };
+      img.src = e.target.result;
+    };
+    reader.onerror = function() {
+      showToast('❌ Ошибка чтения файла');
+    };
+    reader.readAsDataURL(file);
   }
   
   // --- Обработка сообщений ---
@@ -718,7 +682,6 @@
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
     isConnected = false;
     isInitiator = true;
-    reconnectAttempts = 0;
     setStatus('connecting', 'Создание Offer...');
     updatePeers();
     
@@ -733,7 +696,6 @@
       offerDisplay.textContent = currentOffer;
       copyOfferBtn.disabled = false;
       
-      // Генерируем QR
       generateQR(currentOffer);
       
       setStatus('waiting', 'Ожидание Answer');
@@ -743,7 +705,6 @@
     
     p.on('connect', function() {
       isConnected = true;
-      reconnectAttempts = 0;
       setStatus('online', 'Подключено');
       updatePeers();
       showToast('🎉 Соединение установлено!');
@@ -776,7 +737,6 @@
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
     isConnected = false;
     isInitiator = false;
-    reconnectAttempts = 0;
     setStatus('connecting', 'Обработка Offer...');
     updatePeers();
     
@@ -800,7 +760,6 @@
     
     p.on('connect', function() {
       isConnected = true;
-      reconnectAttempts = 0;
       setStatus('online', 'Подключено');
       updatePeers();
       showToast('🎉 Соединение установлено!');
@@ -892,12 +851,14 @@
     setTimeout(() => { processOfferBtn.textContent = '📥 Вставить Offer'; }, 2000);
   });
   
-  scanOfferBtn.addEventListener('click', function() {
-    if (typeof jsQR === 'undefined') {
-      showToast('❌ Библиотека сканирования не загружена');
-      return;
+  // --- Обработка загрузки QR-кода ---
+  qrFileInput.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+      readQRFromFile(file);
     }
-    scanQR();
+    // Сбрасываем input, чтобы можно было загрузить тот же файл снова
+    this.value = '';
   });
   
   copyAnswerBtn.addEventListener('click', function() {
@@ -976,7 +937,7 @@
   
   console.log('📱 Для подключения:');
   console.log('  1. Один нажимает "Создать Offer"');
-  console.log('  2. Другой сканирует QR или вставляет Offer');
+  console.log('  2. Другой загружает скриншот QR-кода или вставляет Offer');
   console.log('  3. Первый вставляет Answer');
   console.log('🌐 Используются TURN+STUN серверы');
   

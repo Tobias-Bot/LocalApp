@@ -77,7 +77,6 @@
       border-radius: 10px;
       font-size: 13px;
       color: #6b5a4a;
-      flex-wrap: wrap;
     }
     .device-info .id {
       font-family: monospace;
@@ -166,8 +165,6 @@
     .btn-success:hover { opacity: 0.9; }
     .btn-purple { background: #5c6bc0; color: white; }
     .btn-purple:hover { opacity: 0.9; }
-    .btn-orange { background: #ff6f00; color: white; }
-    .btn-orange:hover { opacity: 0.9; }
     .code-box {
       background: rgba(255,255,255,0.5); padding: 8px; border-radius: 8px;
       font-family: monospace; font-size: 9px; word-break: break-all;
@@ -217,41 +214,6 @@
       text-align: center;
       margin-top: 4px;
     }
-    .info-box.warning {
-      background: rgba(255,193,7,0.12);
-      border-color: rgba(255,193,7,0.2);
-      color: #856404;
-    }
-    .qr-container {
-      text-align: center;
-      margin: 8px 0;
-    }
-    .qr-container canvas {
-      border-radius: 12px;
-      background: white;
-      padding: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-      max-width: 100%;
-    }
-    .btn-row {
-      display: flex;
-      gap: 4px;
-      margin-top: 4px;
-    }
-    .btn-row button {
-      flex: 1;
-      padding: 6px 10px;
-      border: none;
-      border-radius: 8px;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .btn-row .btn-paste { background: #7c4dff; color: white; }
-    .btn-row .btn-paste:hover { opacity: 0.9; }
-    .btn-row .btn-file { background: #ff6f00; color: white; }
-    .btn-row .btn-file:hover { opacity: 0.9; }
-    .file-input-hidden { display: none; }
   </style>
 </head>
 <body>
@@ -268,12 +230,11 @@
 <div class="card">
   <div class="device-info">
     🆔 Ваш ID: <span class="id" id="myIdDisplay">---</span>
-    <span style="margin-left:auto; font-size:11px; color:#8a7a6a;" id="modeInfo">🌐 Множественные TURN</span>
+    <span style="margin-left:auto; font-size:11px; color:#8a7a6a;" id="modeInfo">🌐 TURN + STUN</span>
   </div>
   
-  <div class="info-box warning" id="connectionHelp">
-    ⚠️ Если соединение не устанавливается — проверьте, что оба устройства в одной сети<br>
-    <span style="font-size:10px;">Используются 5 TURN-серверов для обхода ограничений</span>
+  <div class="info-box">
+    🔄 Используются публичные TURN-серверы для гарантированного соединения
   </div>
   
   <div class="connection-status searching" id="connectionStatus">Нажмите "Создать Offer"</div>
@@ -282,23 +243,15 @@
     <div>
       <button class="btn btn-primary" id="createOfferBtn" style="width:100%;">📤 Создать Offer</button>
       <div class="code-box" id="offerDisplay" style="color:#b8a89a;">Нажмите кнопку</div>
-      <div class="qr-container" id="qrContainer"></div>
       <button class="btn btn-purple" id="copyOfferBtn" style="width:100%;" disabled>📋 Копировать</button>
-      <div class="hint">QR-код или текст для другого устройства</div>
+      <div class="hint">Скопируйте и отправьте другому устройству</div>
     </div>
     <div>
       <button class="btn btn-success" id="processOfferBtn" style="width:100%;">📥 Вставить Offer</button>
       <textarea id="offerInput" placeholder="Вставьте Offer..."></textarea>
-      
-      <div class="btn-row">
-        <button class="btn-paste" id="pasteOfferBtn">📋 Вставить</button>
-        <button class="btn-file" id="fileOfferBtn">📷 QR-файл</button>
-      </div>
-      <input type="file" id="qrFileInput" class="file-input-hidden" accept="image/*">
-      
       <div class="code-box" id="answerDisplay" style="color:#b8a89a;">Ожидание Offer</div>
       <button class="btn btn-purple" id="copyAnswerBtn" style="width:100%;" disabled>📋 Копировать</button>
-      <div class="hint">Скопируйте Answer и отправьте создателю</div>
+      <div class="hint">Скопируйте и отправьте создателю</div>
     </div>
   </div>
   
@@ -335,9 +288,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-
 <script>
 (function() {
   'use strict';
@@ -358,8 +308,8 @@
   let isInitiator = false;
   let currentOffer = null;
   let currentAnswer = null;
-  let retryCount = 0;
-  const MAX_RETRIES = 3;
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT = 3;
   
   // --- BroadcastChannel для вкладок ---
   let channel = null;
@@ -377,21 +327,18 @@
   const peersCount = $('peersCount');
   const connectedCount = $('connectedCount');
   const connectionStatus = $('connectionStatus');
-  const connectionHelp = $('connectionHelp');
   const myIdDisplay = $('myIdDisplay');
+  const modeInfo = $('modeInfo');
   const createOfferBtn = $('createOfferBtn');
   const copyOfferBtn = $('copyOfferBtn');
   const offerDisplay = $('offerDisplay');
-  const qrContainer = $('qrContainer');
   const processOfferBtn = $('processOfferBtn');
   const offerInput = $('offerInput');
-  const pasteOfferBtn = $('pasteOfferBtn');
-  const fileOfferBtn = $('fileOfferBtn');
-  const qrFileInput = $('qrFileInput');
   const answerDisplay = $('answerDisplay');
   const copyAnswerBtn = $('copyAnswerBtn');
   const answerInput = $('answerInput');
   const submitAnswerBtn = $('submitAnswerBtn');
+  const tabModeInfo = $('tabModeInfo');
   const todoList = $('todoList');
   const todoInput = $('todoInput');
   const addTodoBtn = $('addTodoBtn');
@@ -501,109 +448,6 @@
     setTimeout(() => toast.remove(), 3000);
   }
   
-  // --- Генерация QR-кода ---
-  function generateQR(text) {
-    qrContainer.innerHTML = '';
-    try {
-      if (typeof QRCode !== 'undefined') {
-        new QRCode(qrContainer, {
-          text: text,
-          width: 200,
-          height: 200,
-          colorDark: '#2d2a24',
-          colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.H
-        });
-        return true;
-      }
-    } catch(e) {
-      console.error('QR error:', e);
-    }
-    return false;
-  }
-  
-  // --- Чтение QR-кода из изображения ---
-  function readQRFromFile(file) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const img = new Image();
-      img.onload = function() {
-        try {
-          const scale = 2;
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width * scale;
-          canvas.height = img.height * scale;
-          const ctx = canvas.getContext('2d');
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          
-          if (typeof jsQR !== 'undefined') {
-            let code = jsQR(imageData.data, imageData.width, imageData.height);
-            
-            if (!code) {
-              const invertedData = new Uint8ClampedArray(imageData.data);
-              for (let i = 0; i < invertedData.length; i += 4) {
-                invertedData[i] = 255 - invertedData[i];
-                invertedData[i+1] = 255 - invertedData[i+1];
-                invertedData[i+2] = 255 - invertedData[i+2];
-              }
-              code = jsQR(invertedData, imageData.width, imageData.height);
-            }
-            
-            if (code && code.data) {
-              const text = code.data;
-              if (text.includes('offer')) {
-                offerInput.value = text;
-                showToast('✅ QR-код распознан! Нажмите "Вставить Offer"');
-                setTimeout(function() {
-                  processOfferBtn.click();
-                }, 500);
-              } else {
-                showToast('❌ Это не Offer');
-              }
-            } else {
-              showToast('❌ QR-код не найден');
-            }
-          } else {
-            showToast('❌ Библиотека не загружена');
-          }
-        } catch(err) {
-          console.error('Ошибка распознавания:', err);
-          showToast('❌ Ошибка распознавания');
-        }
-      };
-      img.onerror = function() {
-        showToast('❌ Не удалось загрузить изображение');
-      };
-      img.src = e.target.result;
-    };
-    reader.onerror = function() {
-      showToast('❌ Ошибка чтения файла');
-    };
-    reader.readAsDataURL(file);
-  }
-  
-  // --- Вставка из буфера обмена ---
-  async function pasteFromClipboard() {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text && text.includes('offer')) {
-        offerInput.value = text;
-        showToast('✅ Offer вставлен! Нажмите "Вставить Offer"');
-        setTimeout(function() {
-          processOfferBtn.click();
-        }, 500);
-      } else {
-        showToast('❌ В буфере нет Offer');
-      }
-    } catch(e) {
-      showToast('❌ Нет доступа к буферу');
-    }
-  }
-  
   // --- Обработка сообщений ---
   function handlePeerMessage(message) {
     console.log('📥 Получено:', message);
@@ -678,19 +522,17 @@
     };
   }
   
-  // --- Получение ICE-серверов (расширенный список) ---
+  // --- Получение ICE-серверов ---
   function getIceServers() {
     return {
       iceServers: [
-        // STUN
+        // STUN-серверы Google
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:stun.anyfirewall.com:3478' },
-        
-        // TURN (несколько серверов для надёжности)
+        // TURN-серверы (ретрансляция)
         {
           urls: [
             'turn:turn.anyfirewall.com:443?transport=tcp',
@@ -704,28 +546,23 @@
           username: 'webrtc',
           credential: 'webrtc'
         },
+        // Дополнительные TURN-серверы
         {
           urls: 'turn:turn.viagenie.ca:3478?transport=udp',
           username: 'webrtc@live.com',
           credential: 'muazkh'
-        },
-        {
-          urls: 'turn:numb.viagenie.ca:3478?transport=udp',
-          username: 'webrtc@live.com',
-          credential: 'muazkh'
         }
       ],
-      iceCandidatePoolSize: 10,
-      iceTransportPolicy: 'all'
+      iceCandidatePoolSize: 10
     };
   }
   
-  // --- Создание Offer с повторными попытками ---
+  // --- Создание Offer ---
   function createOffer() {
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
     isConnected = false;
     isInitiator = true;
-    retryCount = 0;
+    reconnectAttempts = 0;
     setStatus('connecting', 'Создание Offer...');
     updatePeers();
     
@@ -735,25 +572,18 @@
       config: getIceServers()
     });
     
-    let signalSent = false;
-    
     p.on('signal', function(data) {
-      if (signalSent) return;
-      signalSent = true;
       currentOffer = JSON.stringify({ type: 'offer', data, peerId: myId });
       offerDisplay.textContent = currentOffer;
       copyOfferBtn.disabled = false;
-      
-      generateQR(currentOffer);
-      
       setStatus('waiting', 'Ожидание Answer');
-      showToast('✅ Offer создан! QR-код готов');
+      showToast('✅ Offer создан!');
       try { navigator.clipboard?.writeText(currentOffer); } catch(e) {}
     });
     
     p.on('connect', function() {
       isConnected = true;
-      retryCount = 0;
+      reconnectAttempts = 0;
       setStatus('online', 'Подключено');
       updatePeers();
       showToast('🎉 Соединение установлено!');
@@ -768,20 +598,7 @@
       console.error('❌ Ошибка peer:', err);
       if (!isConnected) {
         setStatus('offline', 'Ошибка: ' + err.message);
-        showToast('❌ ' + err.message);
-        
-        // Повторная попытка при ICE ошибке
-        if (err.message.includes('ICE') || err.message.includes('Connection failed')) {
-          if (retryCount < MAX_RETRIES) {
-            retryCount++;
-            showToast('🔄 Повторная попытка ' + retryCount + '/' + MAX_RETRIES);
-            setTimeout(function() {
-              if (!isConnected) {
-                createOffer();
-              }
-            }, 2000);
-          }
-        }
+        showToast('❌ Ошибка: ' + err.message);
       }
     });
     
@@ -794,12 +611,12 @@
     peer = p;
   }
   
-  // --- Обработка Offer с повторными попытками ---
+  // --- Обработка Offer ---
   function processOffer(offerData) {
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
     isConnected = false;
     isInitiator = false;
-    retryCount = 0;
+    reconnectAttempts = 0;
     setStatus('connecting', 'Обработка Offer...');
     updatePeers();
     
@@ -823,7 +640,7 @@
     
     p.on('connect', function() {
       isConnected = true;
-      retryCount = 0;
+      reconnectAttempts = 0;
       setStatus('online', 'Подключено');
       updatePeers();
       showToast('🎉 Соединение установлено!');
@@ -838,19 +655,7 @@
       console.error('❌ Ошибка peer:', err);
       if (!isConnected) {
         setStatus('offline', 'Ошибка: ' + err.message);
-        showToast('❌ ' + err.message);
-        
-        if (err.message.includes('ICE') || err.message.includes('Connection failed')) {
-          if (retryCount < MAX_RETRIES) {
-            retryCount++;
-            showToast('🔄 Повторная попытка ' + retryCount + '/' + MAX_RETRIES);
-            setTimeout(function() {
-              if (!isConnected && offerData) {
-                processOffer(offerData);
-              }
-            }, 2000);
-          }
-        }
+        showToast('❌ Ошибка: ' + err.message);
       }
     });
     
@@ -927,23 +732,6 @@
     setTimeout(() => { processOfferBtn.textContent = '📥 Вставить Offer'; }, 2000);
   });
   
-  pasteOfferBtn.addEventListener('click', function() {
-    pasteFromClipboard();
-  });
-  
-  fileOfferBtn.addEventListener('click', function() {
-    qrFileInput.click();
-  });
-  
-  qrFileInput.addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (file) {
-      showToast('⏳ Обработка QR-кода...');
-      readQRFromFile(file);
-    }
-    this.value = '';
-  });
-  
   copyAnswerBtn.addEventListener('click', function() {
     if (currentAnswer && copyText(currentAnswer)) {
       showToast('✅ Answer скопирован!');
@@ -1018,12 +806,12 @@
   setStatus('offline', 'Готов к подключению');
   updatePeers();
   
-  console.log('📱 Для подключения:');
-  console.log('  1. Один нажимает "Создать Offer"');
-  console.log('  2. Другой вставляет Offer (вручную, из буфера или QR)');
-  console.log('  3. Первый вставляет Answer');
-  console.log('🌐 Используются 5 TURN-серверов');
-  console.log('🔄 При ошибке ICE будет автоматический повтор');
+  console.log('📱 Для подключения между устройствами:');
+  console.log('  1. Один нажимает "Создать Offer" и копирует код');
+  console.log('  2. Другой вставляет Offer → получает Answer');
+  console.log('  3. Первый вставляет Answer → соединение установлено');
+  console.log('💡 Между вкладками синхронизация автоматическая');
+  console.log('🌐 Используются TURN-серверы для гарантированного соединения');
   
 })();
 </script>

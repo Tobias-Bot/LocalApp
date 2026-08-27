@@ -87,14 +87,6 @@
       padding: 1px 8px;
       border-radius: 4px;
     }
-    .device-info .badge {
-      font-size: 10px;
-      background: rgba(76,175,80,0.15);
-      color: #1b5e20;
-      padding: 1px 10px;
-      border-radius: 12px;
-      margin-left: auto;
-    }
     .connection-status {
       text-align: center;
       padding: 10px;
@@ -203,16 +195,6 @@
       to { opacity: 1; transform: translateY(0); }
     }
     .hint { font-size: 11px; color: #8a7a6a; text-align: center; padding: 2px; }
-    .info-box {
-      background: rgba(66,165,245,0.08);
-      border: 1px solid rgba(66,165,245,0.15);
-      border-radius: 8px;
-      padding: 6px 10px;
-      font-size: 11px;
-      color: #0d47a1;
-      text-align: center;
-      margin-top: 4px;
-    }
     .qr-container {
       text-align: center;
       margin: 8px 0;
@@ -223,15 +205,12 @@
       padding: 8px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
-    .restore-info {
-      background: rgba(76,175,80,0.08);
-      border: 1px solid rgba(76,175,80,0.15);
-      border-radius: 8px;
-      padding: 4px 10px;
-      font-size: 11px;
-      color: #1b5e20;
-      text-align: center;
-      margin-top: 4px;
+    .qr-container img {
+      border-radius: 12px;
+      background: white;
+      padding: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      max-width: 100%;
     }
   </style>
 </head>
@@ -249,14 +228,8 @@
 <div class="card">
   <div class="device-info">
     🆔 Ваш ID: <span class="id" id="myIdDisplay">---</span>
-    <span class="badge" id="connectionBadge">🔴 Офлайн</span>
   </div>
-  
-  <div class="info-box">
-    📱 Отсканируйте QR-код или используйте Offer/Answer для подключения
-  </div>
-  
-  <div class="connection-status searching" id="connectionStatus">Нажмите "Создать Offer" или отсканируйте QR</div>
+  <div class="connection-status searching" id="connectionStatus">Нажмите "Создать Offer"</div>
   
   <div class="grid-2">
     <div>
@@ -264,24 +237,20 @@
       <div class="code-box" id="offerDisplay" style="color:#b8a89a;">Нажмите кнопку</div>
       <div class="qr-container" id="qrContainer"></div>
       <button class="btn btn-purple" id="copyOfferBtn" style="width:100%;" disabled>📋 Копировать</button>
-      <div class="hint">Скопируйте или покажите QR-код</div>
+      <div class="hint">QR-код или текст для другого устройства</div>
     </div>
     <div>
       <button class="btn btn-success" id="processOfferBtn" style="width:100%;">📥 Вставить Offer</button>
       <textarea id="offerInput" placeholder="Вставьте Offer..."></textarea>
       <div class="code-box" id="answerDisplay" style="color:#b8a89a;">Ожидание Offer</div>
       <button class="btn btn-purple" id="copyAnswerBtn" style="width:100%;" disabled>📋 Копировать</button>
-      <div class="hint">Скопируйте и отправьте создателю</div>
+      <div class="hint">Скопируйте Answer и отправьте создателю</div>
     </div>
   </div>
   
   <div class="mt-8">
     <input type="text" id="answerInput" placeholder="Вставьте Answer..." style="width:100%;padding:8px 12px;border:1px solid rgba(45,42,36,0.08);border-radius:8px;font-size:13px;background:rgba(255,255,255,0.5);">
     <button class="btn btn-success" id="submitAnswerBtn" style="width:100%;margin-top:4px;">✅ Отправить Answer</button>
-  </div>
-  
-  <div class="restore-info" id="restoreInfo">
-    🔄 Соединение восстанавливается автоматически после перезагрузки
   </div>
   
   <div class="connected-users">
@@ -314,12 +283,8 @@
   'use strict';
   console.log('🏠 Семейный хаб запущен');
   
-  // --- ID устройства (сохраняем для восстановления) ---
-  let myId = localStorage.getItem('familyHub_userId');
-  if (!myId) {
-    myId = 'User-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-    localStorage.setItem('familyHub_userId', myId);
-  }
+  // --- ID ---
+  const myId = 'User-' + Math.random().toString(36).substring(2, 6).toUpperCase();
   
   // --- Данные ---
   let todosData = JSON.parse(localStorage.getItem('familyHub_todos') || '[]');
@@ -333,9 +298,6 @@
   let isInitiator = false;
   let currentOffer = null;
   let currentAnswer = null;
-  let reconnectTimer = null;
-  let restoreAttempts = 0;
-  const MAX_RESTORE_ATTEMPTS = 5;
   
   // --- DOM ---
   const $ = id => document.getElementById(id);
@@ -344,7 +306,6 @@
   const peersCount = $('peersCount');
   const connectedCount = $('connectedCount');
   const connectionStatus = $('connectionStatus');
-  const connectionBadge = $('connectionBadge');
   const myIdDisplay = $('myIdDisplay');
   const createOfferBtn = $('createOfferBtn');
   const copyOfferBtn = $('copyOfferBtn');
@@ -356,7 +317,6 @@
   const copyAnswerBtn = $('copyAnswerBtn');
   const answerInput = $('answerInput');
   const submitAnswerBtn = $('submitAnswerBtn');
-  const restoreInfo = $('restoreInfo');
   const todoList = $('todoList');
   const todoInput = $('todoInput');
   const addTodoBtn = $('addTodoBtn');
@@ -444,15 +404,6 @@
       };
       connectionStatus.textContent = texts[state] || '⏳ ' + text;
     }
-    if (connectionBadge) {
-      const badges = {
-        online: '✅ Онлайн',
-        offline: '🔴 Офлайн',
-        connecting: '🔄 Подключение',
-        waiting: '⏳ Ожидание'
-      };
-      connectionBadge.textContent = badges[state] || text;
-    }
   }
   
   function updatePeers() {
@@ -470,6 +421,31 @@
     toast.textContent = msg;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
+  }
+  
+  // --- Генерация QR-кода ---
+  function generateQR(text, container) {
+    const el = container || qrContainer;
+    el.innerHTML = '';
+    try {
+      if (typeof QRCode !== 'undefined') {
+        new QRCode(el, {
+          text: text,
+          width: 180,
+          height: 180,
+          colorDark: '#2d2a24',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.H
+        });
+        return true;
+      } else {
+        el.innerHTML = '<span style="color:#b8a89a;font-size:12px;">⚠️ QR-код недоступен</span>';
+      }
+    } catch(e) {
+      console.error('QR error:', e);
+      el.innerHTML = '<span style="color:#b8a89a;font-size:12px;">⚠️ Ошибка QR</span>';
+    }
+    return false;
   }
   
   // --- Обработка сообщений ---
@@ -519,7 +495,7 @@
     }));
   }
   
-  // --- Получение ICE-серверов ---
+  // --- ICE серверы (проверенная конфигурация) ---
   function getIceServers() {
     return {
       iceServers: [
@@ -546,34 +522,11 @@
     };
   }
   
-  // --- Генерация QR-кода ---
-  function generateQR(text) {
-    qrContainer.innerHTML = '';
-    try {
-      if (typeof QRCode !== 'undefined') {
-        new QRCode(qrContainer, {
-          text: text,
-          width: 180,
-          height: 180,
-          colorDark: '#2d2a24',
-          colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.H
-        });
-        return true;
-      }
-    } catch(e) {
-      console.error('QR error:', e);
-      qrContainer.innerHTML = '<span style="color:#b8a89a;font-size:12px;">⚠️ QR-код недоступен</span>';
-    }
-    return false;
-  }
-  
   // --- Создание Offer ---
   function createOffer() {
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
     isConnected = false;
     isInitiator = true;
-    restoreAttempts = 0;
     setStatus('connecting', 'Создание Offer...');
     updatePeers();
     
@@ -588,25 +541,19 @@
       offerDisplay.textContent = currentOffer;
       copyOfferBtn.disabled = false;
       
-      // Генерируем QR-код
+      // Генерируем QR
       generateQR(currentOffer);
       
       setStatus('waiting', 'Ожидание Answer');
-      showToast('✅ Offer создан! Отсканируйте QR или скопируйте код');
+      showToast('✅ Offer создан! QR-код готов');
       try { navigator.clipboard?.writeText(currentOffer); } catch(e) {}
     });
     
     p.on('connect', function() {
       isConnected = true;
-      restoreAttempts = 0;
       setStatus('online', 'Подключено');
       updatePeers();
       showToast('🎉 Соединение установлено!');
-      
-      // Сохраняем состояние для восстановления
-      localStorage.setItem('familyHub_connected', 'true');
-      localStorage.setItem('familyHub_isInitiator', 'true');
-      
       setTimeout(sendSyncData, 500);
     });
     
@@ -626,9 +573,6 @@
       isConnected = false;
       setStatus('offline', 'Отключено');
       updatePeers();
-      localStorage.removeItem('familyHub_connected');
-      localStorage.removeItem('familyHub_isInitiator');
-      scheduleReconnect();
     });
     
     peer = p;
@@ -639,7 +583,6 @@
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
     isConnected = false;
     isInitiator = false;
-    restoreAttempts = 0;
     setStatus('connecting', 'Обработка Offer...');
     updatePeers();
     
@@ -663,14 +606,9 @@
     
     p.on('connect', function() {
       isConnected = true;
-      restoreAttempts = 0;
       setStatus('online', 'Подключено');
       updatePeers();
       showToast('🎉 Соединение установлено!');
-      
-      localStorage.setItem('familyHub_connected', 'true');
-      localStorage.setItem('familyHub_isInitiator', 'false');
-      
       setTimeout(sendSyncData, 500);
     });
     
@@ -690,9 +628,6 @@
       isConnected = false;
       setStatus('offline', 'Отключено');
       updatePeers();
-      localStorage.removeItem('familyHub_connected');
-      localStorage.removeItem('familyHub_isInitiator');
-      scheduleReconnect();
     });
     
     try {
@@ -722,52 +657,6 @@
     }
   }
   
-  // --- Восстановление соединения ---
-  function restoreConnection() {
-    const wasConnected = localStorage.getItem('familyHub_connected') === 'true';
-    if (!wasConnected || isConnected) return;
-    
-    if (restoreAttempts >= MAX_RESTORE_ATTEMPTS) {
-      restoreInfo.textContent = '⚠️ Не удалось восстановить соединение. Создайте новое.';
-      restoreInfo.style.background = 'rgba(239,83,80,0.08)';
-      restoreInfo.style.borderColor = 'rgba(239,83,80,0.15)';
-      restoreInfo.style.color = '#b71c1c';
-      return;
-    }
-    
-    restoreAttempts++;
-    restoreInfo.textContent = `🔄 Восстановление соединения (попытка ${restoreAttempts}/${MAX_RESTORE_ATTEMPTS})...`;
-    
-    const isInitiator = localStorage.getItem('familyHub_isInitiator') === 'true';
-    
-    if (isInitiator) {
-      createOffer();
-    } else {
-      // Для не-инициатора нужно получить Offer от создателя
-      // Поэтому просто показываем сообщение
-      restoreInfo.textContent = `⏳ Ожидание Offer от создателя (попытка ${restoreAttempts}/${MAX_RESTORE_ATTEMPTS})`;
-      // Ищем сохранённый Offer
-      const savedOffer = localStorage.getItem('familyHub_lastOffer');
-      if (savedOffer) {
-        try {
-          processOffer(savedOffer);
-          localStorage.removeItem('familyHub_lastOffer');
-        } catch(e) {}
-      }
-    }
-  }
-  
-  // --- Планирование переподключения ---
-  function scheduleReconnect() {
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => {
-      if (!isConnected) {
-        console.log('🔄 Попытка восстановления...');
-        restoreConnection();
-      }
-    }, 3000);
-  }
-  
   // --- Копирование ---
   function copyText(text) {
     try {
@@ -787,12 +676,6 @@
   // --- Обработчики кнопок ---
   createOfferBtn.addEventListener('click', function() {
     createOffer();
-    // Сохраняем Offer для восстановления
-    setTimeout(() => {
-      if (currentOffer) {
-        localStorage.setItem('familyHub_lastOffer', currentOffer);
-      }
-    }, 500);
     createOfferBtn.textContent = '⏳...';
     setTimeout(() => { createOfferBtn.textContent = '📤 Создать Offer'; }, 2000);
   });
@@ -810,8 +693,6 @@
     if (!offer) { showToast('❌ Вставьте Offer!'); return; }
     try { JSON.parse(offer); } catch(e) { showToast('❌ Неверный формат'); return; }
     processOffer(offer);
-    // Сохраняем для восстановления
-    localStorage.setItem('familyHub_lastOffer', offer);
     processOfferBtn.textContent = '⏳...';
     setTimeout(() => { processOfferBtn.textContent = '📥 Вставить Offer'; }, 2000);
   });
@@ -884,23 +765,10 @@
   setStatus('offline', 'Готов к подключению');
   updatePeers();
   
-  // Попытка восстановления соединения
-  setTimeout(function() {
-    const wasConnected = localStorage.getItem('familyHub_connected') === 'true';
-    if (wasConnected) {
-      console.log('🔄 Восстановление соединения...');
-      restoreInfo.textContent = '🔄 Восстановление соединения...';
-      restoreConnection();
-    } else {
-      restoreInfo.textContent = '📱 Создайте Offer или вставьте существующий';
-    }
-  }, 1000);
-  
   console.log('📱 Для подключения:');
   console.log('  1. Один нажимает "Создать Offer"');
   console.log('  2. Другой сканирует QR или вставляет Offer');
   console.log('  3. Первый вставляет Answer');
-  console.log('🔄 Соединение восстанавливается после перезагрузки');
   
 })();
 </script>

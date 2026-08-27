@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🏠 Семейный хаб</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(135deg, #f5f0eb 0%, #e8e0d8 100%);
+      min-height: 100vh;
+      padding: 16px;
+      padding-bottom: 80px;
+      color: #2d2a24;
+    }
+    .header {
+      background: linear-gradient(135deg, #2d2a24 0%, #4a3728 100%);
+      border-radius: 20px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .header h1 { font-size: 20px; font-weight: 700; color: #f5f0eb; }
+    .header h1 span { color: #e8c9a0; }
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,255,255,0.1);
+      padding: 4px 12px 4px 8px;
+      border-radius: 20px;
+    }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+    }
+    .status-dot.online { background: #4caf50; }
+    .status-dot.offline { background: #ef5350; }
+    .status-dot.connecting { background: #ffb74d; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    .status-label { color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 500; }
+    .peers-badge {
+      background: rgba(255,255,255,0.15);
+      padding: 1px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.9);
+      font-weight: 600;
+    }
+    .card {
+      background: rgba(255,255,255,0.9);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #2d2a24;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title .icon { font-size: 18px; }
+    .device-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      background: rgba(45,42,36,0.05);
+      border-radius: 10px;
+      font-size: 13px;
+      color: #6b5a4a;
+    }
+    .device-info .id {
+      font-family: monospace;
+      font-weight: 600;
+      color: #2d2a24;
+      background: rgba(255,255,255,0.6);
+      padding: 1px 8px;
+      border-radius: 4px;
+    }
+    .connection-status {
+      text-align: center;
+      padding: 10px;
+      border-radius: 10px;
+      margin: 8px 0;
+      font-size: 13px;
+    }
+    .connection-status.searching { background: rgba(66,165,245,0.1); color: #0d47a1; }
+    .connection-status.connected { background: rgba(76,175,80,0.1); color: #1b5e20; }
+    .connection-status.waiting { background: rgba(144,164,174,0.1); color: #37474f; }
+    .connection-status.error { background: rgba(239,83,80,0.1); color: #b71c1c; }
+    .todo-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(45,42,36,0.05);
+    }
+    .todo-item:last-child { border-bottom: none; }
+    .todo-item .text { font-size: 14px; color: #2d2a24; flex: 1; }
+    .todo-item .del-btn {
+      background: none; border: none; color: #ccc; font-size: 16px;
+      cursor: pointer; padding: 2px 8px; border-radius: 6px;
+    }
+    .todo-item .del-btn:hover { color: #ef5350; background: rgba(239,83,80,0.08); }
+    .empty-state { text-align: center; padding: 16px 0; color: #b8a89a; font-size: 13px; }
+    .empty-state .emoji { font-size: 24px; display: block; margin-bottom: 4px; }
+    .input-row {
+      display: flex; gap: 8px; margin-top: 8px;
+    }
+    .input-row input {
+      flex: 1; padding: 10px 14px; border: 2px solid rgba(45,42,36,0.08);
+      border-radius: 12px; font-size: 14px; background: rgba(255,255,255,0.5);
+      outline: none;
+    }
+    .input-row input:focus { border-color: #4a3728; background: white; }
+    .input-row button {
+      padding: 10px 18px; border: none; border-radius: 12px; font-size: 14px;
+      font-weight: 600; color: white; cursor: pointer;
+      background: linear-gradient(135deg, #2d2a24 0%, #4a3728 100%);
+      white-space: nowrap;
+    }
+    .input-row button:hover { opacity: 0.9; }
+    .chat-messages {
+      max-height: 220px; overflow-y: auto; padding: 4px 0; margin-bottom: 8px;
+    }
+    .chat-messages::-webkit-scrollbar { width: 3px; }
+    .chat-messages::-webkit-scrollbar-thumb { background: #d4c5b8; border-radius: 4px; }
+    .chat-msg {
+      padding: 8px 12px; margin-bottom: 6px; border-radius: 12px;
+      max-width: 85%; animation: slideIn 0.2s ease;
+    }
+    .chat-msg.own {
+      background: linear-gradient(135deg, #2d2a24 0%, #4a3728 100%);
+      color: #f5f0eb; margin-left: auto; border-bottom-right-radius: 4px;
+    }
+    .chat-msg.other {
+      background: rgba(255,255,255,0.7); border: 1px solid rgba(255,255,255,0.8);
+      border-bottom-left-radius: 4px;
+    }
+    .chat-msg .author { font-size: 11px; font-weight: 600; opacity: 0.6; }
+    .chat-msg .time { font-size: 10px; opacity: 0.4; margin-left: 6px; }
+    .chat-msg .text { font-size: 14px; line-height: 1.3; word-wrap: break-word; }
+    .connected-users {
+      font-size: 12px; color: #6b5a4a; text-align: center; padding: 4px;
+      background: rgba(76,175,80,0.08); border-radius: 8px; margin-top: 6px;
+    }
+    .connected-users .count { font-weight: 700; color: #2d2a24; }
+    .btn {
+      padding: 8px 14px; border: none; border-radius: 10px; font-size: 13px;
+      font-weight: 600; cursor: pointer; transition: all 0.2s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: #2d2a24; color: white; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-success { background: #43a047; color: white; }
+    .btn-success:hover { opacity: 0.9; }
+    .btn-purple { background: #5c6bc0; color: white; }
+    .btn-purple:hover { opacity: 0.9; }
+    .btn-danger { background: rgba(239,83,80,0.1); color: #ef5350; }
+    .btn-danger:hover { background: rgba(239,83,80,0.2); }
+    .code-box {
+      background: rgba(255,255,255,0.5); padding: 8px; border-radius: 8px;
+      font-family: monospace; font-size: 9px; word-break: break-all;
+      max-height: 60px; overflow-y: auto; border: 1px solid rgba(45,42,36,0.06);
+      margin: 4px 0; user-select: all;
+    }
+    textarea {
+      width: 100%; padding: 8px; border: 1px solid rgba(45,42,36,0.08);
+      border-radius: 8px; font-family: monospace; font-size: 10px;
+      min-height: 50px; resize: vertical; background: rgba(255,255,255,0.5);
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    @media (max-width: 480px) { .grid-2 { grid-template-columns: 1fr; } }
+    .mt-8 { margin-top: 8px; }
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #2d2a24; color: white; padding: 10px 20px; border-radius: 12px;
+      font-size: 13px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      animation: slideUp 0.3s ease; z-index: 1000; max-width: 90%; text-align: center;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .hint { font-size: 11px; color: #8a7a6a; text-align: center; padding: 2px; }
+    .tab-mode {
+      background: rgba(76,175,80,0.08);
+      border: 1px solid rgba(76,175,80,0.2);
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 11px;
+      color: #1b5e20;
+      text-align: center;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏠 <span>Семейный</span> хаб</h1>
+  <div class="header-status">
+    <span class="status-dot offline" id="statusDot"></span>
+    <span class="status-label" id="statusLabel">Не подключено</span>
+    <span class="peers-badge" id="peersCount">0</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="device-info">
+    🆔 Ваш ID: <span class="id" id="myIdDisplay">---</span>
+    <span style="margin-left:auto; font-size:11px; color:#8a7a6a;" id="modeInfo">📡 Режим: вкладки + ручной</span>
+  </div>
+  <div class="connection-status searching" id="connectionStatus">Выберите способ подключения</div>
+  
+  <div style="display:flex; gap:8px; margin: 8px 0;">
+    <button class="btn btn-primary" id="createOfferBtn" style="flex:1;">📤 Создать Offer</button>
+    <button class="btn btn-success" id="processOfferBtn" style="flex:1;">📥 Вставить Offer</button>
+  </div>
+  
+  <div class="grid-2">
+    <div>
+      <div class="code-box" id="offerDisplay" style="color:#b8a89a;">Нажмите "Создать Offer"</div>
+      <button class="btn btn-purple" id="copyOfferBtn" style="width:100%;" disabled>📋 Копировать</button>
+      <div class="hint">Скопируйте и отправьте другому устройству</div>
+    </div>
+    <div>
+      <textarea id="offerInput" placeholder="Вставьте Offer..."></textarea>
+      <div class="code-box" id="answerDisplay" style="color:#b8a89a;">Ожидание Offer</div>
+      <button class="btn btn-purple" id="copyAnswerBtn" style="width:100%;" disabled>📋 Копировать</button>
+      <div class="hint">Скопируйте и отправьте создателю</div>
+    </div>
+  </div>
+  
+  <div class="mt-8">
+    <input type="text" id="answerInput" placeholder="Вставьте Answer..." style="width:100%;padding:8px 12px;border:1px solid rgba(45,42,36,0.08);border-radius:8px;font-size:13px;background:rgba(255,255,255,0.5);">
+    <button class="btn btn-success" id="submitAnswerBtn" style="width:100%;margin-top:4px;">✅ Отправить Answer</button>
+  </div>
+  
+  <div class="tab-mode" id="tabModeInfo">
+    📡 Вкладки синхронизируются автоматически через BroadcastChannel
+  </div>
+  
+  <div class="connected-users">
+    👥 Подключено: <span class="count" id="connectedCount">0</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="icon">📋</span> Список дел <span style="font-size:12px;color:#b8a89a;font-weight:400;margin-left:auto;" id="todoCount">0</span></div>
+  <div id="todoList"><div class="empty-state"><span class="emoji">✨</span>Нет задач</div></div>
+  <div class="input-row">
+    <input type="text" id="todoInput" placeholder="Добавить задачу..." maxlength="100">
+    <button id="addTodoBtn">Добавить</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><span class="icon">💬</span> Общий чат <span style="font-size:12px;color:#b8a89a;font-weight:400;margin-left:auto;" id="msgCount">0</span></div>
+  <div class="chat-messages" id="chatMessages"><div class="empty-state"><span class="emoji">💭</span>Напишите первое сообщение...</div></div>
+  <div class="input-row">
+    <input type="text" id="chatInput" placeholder="Написать сообщение..." maxlength="200">
+    <button id="sendChatBtn">Отправить</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+<script>
+(function() {
+  'use strict';
+  console.log('🏠 Семейный хаб запущен');
+  
+  // --- ID ---
+  const myId = 'User-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+  
+  // --- Данные ---
+  let todosData = JSON.parse(localStorage.getItem('familyHub_todos') || '[]');
+  let messagesData = JSON.parse(localStorage.getItem('familyHub_messages') || '[]');
+  let nextTodoId = parseInt(localStorage.getItem('familyHub_nextTodoId') || '1');
+  let nextMsgId = parseInt(localStorage.getItem('familyHub_nextMsgId') || '1');
+  
+  // --- WebRTC ---
+  let peer = null;
+  let isConnected = false;
+  let isInitiator = false;
+  let currentOffer = null;
+  let currentAnswer = null;
+  
+  // --- BroadcastChannel для вкладок ---
+  let channel = null;
+  try {
+    channel = new BroadcastChannel('family-hub-channel');
+    console.log('📡 BroadcastChannel создан для вкладок');
+  } catch(e) {
+    console.warn('BroadcastChannel не поддерживается');
+  }
+  
+  // --- DOM ---
+  const $ = id => document.getElementById(id);
+  const statusDot = $('statusDot');
+  const statusLabel = $('statusLabel');
+  const peersCount = $('peersCount');
+  const connectedCount = $('connectedCount');
+  const connectionStatus = $('connectionStatus');
+  const myIdDisplay = $('myIdDisplay');
+  const modeInfo = $('modeInfo');
+  const createOfferBtn = $('createOfferBtn');
+  const copyOfferBtn = $('copyOfferBtn');
+  const offerDisplay = $('offerDisplay');
+  const processOfferBtn = $('processOfferBtn');
+  const offerInput = $('offerInput');
+  const answerDisplay = $('answerDisplay');
+  const copyAnswerBtn = $('copyAnswerBtn');
+  const answerInput = $('answerInput');
+  const submitAnswerBtn = $('submitAnswerBtn');
+  const tabModeInfo = $('tabModeInfo');
+  const todoList = $('todoList');
+  const todoInput = $('todoInput');
+  const addTodoBtn = $('addTodoBtn');
+  const todoCount = $('todoCount');
+  const chatMessages = $('chatMessages');
+  const chatInput = $('chatInput');
+  const sendChatBtn = $('sendChatBtn');
+  const msgCount = $('msgCount');
+  
+  // --- Показываем ID ---
+  if (myIdDisplay) myIdDisplay.textContent = myId;
+  console.log('🆔 ID:', myId);
+  
+  // --- Рендеринг ---
+  function renderTodos() {
+    if (!todosData.length) {
+      todoList.innerHTML = '<div class="empty-state"><span class="emoji">✨</span>Нет задач</div>';
+      todoCount.textContent = '0';
+      return;
+    }
+    todoList.innerHTML = todosData.map((item, i) => `
+      <div class="todo-item">
+        <span class="text">${escapeHtml(item.text)}</span>
+        <button class="del-btn" data-index="${i}">✕</button>
+      </div>
+    `).join('');
+    todoCount.textContent = todosData.length;
+    todoList.querySelectorAll('.del-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const idx = parseInt(this.dataset.index);
+        const item = todosData[idx];
+        todosData.splice(idx, 1);
+        saveData();
+        renderTodos();
+        if (peer && isConnected) {
+          peer.send(JSON.stringify({ type: 'remove', collection: 'todos', id: item.id }));
+        }
+        if (channel) {
+          channel.postMessage({ type: 'remove', collection: 'todos', id: item.id, from: myId });
+        }
+      });
+    });
+  }
+  
+  function renderMessages() {
+    if (!messagesData.length) {
+      chatMessages.innerHTML = '<div class="empty-state"><span class="emoji">💭</span>Напишите первое сообщение...</div>';
+      msgCount.textContent = '0';
+      return;
+    }
+    chatMessages.innerHTML = messagesData.map(msg => {
+      const isOwn = msg.author === myId;
+      return `
+        <div class="chat-msg ${isOwn ? 'own' : 'other'}">
+          <div class="author">${escapeHtml(msg.author)}<span class="time">${msg.time || ''}</span></div>
+          <div class="text">${escapeHtml(msg.text)}</div>
+        </div>
+      `;
+    }).join('');
+    msgCount.textContent = messagesData.length;
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+  
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  
+  function saveData() {
+    localStorage.setItem('familyHub_todos', JSON.stringify(todosData));
+    localStorage.setItem('familyHub_messages', JSON.stringify(messagesData));
+    localStorage.setItem('familyHub_nextTodoId', String(nextTodoId));
+    localStorage.setItem('familyHub_nextMsgId', String(nextMsgId));
+  }
+  
+  function setStatus(state, text) {
+    if (statusDot) statusDot.className = 'status-dot ' + state;
+    if (statusLabel) statusLabel.textContent = text;
+    if (connectionStatus) {
+      const map = { online: 'connected', offline: 'error', connecting: 'searching', waiting: 'waiting' };
+      connectionStatus.className = 'connection-status ' + (map[state] || 'searching');
+      const texts = {
+        online: '✅ Подключено!',
+        offline: '❌ Нет соединения',
+        waiting: '⏳ Ожидание...',
+        connecting: '🔄 Подключение...'
+      };
+      connectionStatus.textContent = texts[state] || '⏳ ' + text;
+    }
+  }
+  
+  function updatePeers() {
+    const count = (peer && isConnected) ? 1 : 0;
+    if (peersCount) peersCount.textContent = count;
+    if (connectedCount) connectedCount.textContent = count;
+    return count;
+  }
+  
+  function showToast(msg) {
+    const existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  }
+  
+  // --- Обработка сообщений ---
+  function handlePeerMessage(message) {
+    console.log('📥 Получено:', message);
+    
+    if (message.type === 'sync') {
+      const { todos, messages } = message.payload;
+      let changed = false;
+      if (todos && todos.length > todosData.length) {
+        todosData = todos; renderTodos(); changed = true;
+      }
+      if (messages && messages.length > messagesData.length) {
+        messagesData = messages; renderMessages(); changed = true;
+      }
+      if (changed) saveData();
+      setStatus('online', 'Синхронизировано');
+      updatePeers();
+      showToast('✅ Данные синхронизированы!');
+      
+    } else if (message.type === 'add') {
+      if (message.collection === 'todos') {
+        if (!todosData.some(item => item.id === message.payload.id)) {
+          todosData.push(message.payload); renderTodos(); saveData();
+          showToast('📋 ' + message.payload.text);
+        }
+      } else if (message.collection === 'messages') {
+        if (!messagesData.some(item => item.id === message.payload.id)) {
+          messagesData.push(message.payload); renderMessages(); saveData();
+        }
+      }
+    } else if (message.type === 'remove') {
+      if (message.collection === 'todos') {
+        const idx = todosData.findIndex(item => item.id === message.id);
+        if (idx !== -1) { todosData.splice(idx, 1); renderTodos(); saveData(); }
+      }
+    } else if (message.type === 'request_sync') {
+      sendSyncData();
+    }
+  }
+  
+  function sendSyncData() {
+    if (!peer || !peer.connected) return;
+    peer.send(JSON.stringify({
+      type: 'sync',
+      payload: { todos: todosData, messages: messagesData }
+    }));
+  }
+  
+  // --- BroadcastChannel для вкладок ---
+  if (channel) {
+    channel.onmessage = function(event) {
+      const msg = event.data;
+      if (msg.from === myId) return;
+      
+      console.log('📡 BroadcastChannel:', msg);
+      
+      if (msg.type === 'add') {
+        if (msg.collection === 'todos') {
+          if (!todosData.some(item => item.id === msg.payload.id)) {
+            todosData.push(msg.payload); renderTodos(); saveData();
+          }
+        } else if (msg.collection === 'messages') {
+          if (!messagesData.some(item => item.id === msg.payload.id)) {
+            messagesData.push(msg.payload); renderMessages(); saveData();
+          }
+        }
+      } else if (msg.type === 'remove') {
+        if (msg.collection === 'todos') {
+          const idx = todosData.findIndex(item => item.id === msg.id);
+          if (idx !== -1) { todosData.splice(idx, 1); renderTodos(); saveData(); }
+        }
+      }
+    };
+  }
+  
+  // --- Создание Offer ---
+  function createOffer() {
+    if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+    isConnected = false;
+    isInitiator = true;
+    setStatus('connecting', 'Создание Offer...');
+    updatePeers();
+    
+    const p = new SimplePeer({
+      initiator: true,
+      trickle: false,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ]
+      }
+    });
+    
+    p.on('signal', function(data) {
+      currentOffer = JSON.stringify({ type: 'offer', data, peerId: myId });
+      offerDisplay.textContent = currentOffer;
+      copyOfferBtn.disabled = false;
+      setStatus('waiting', 'Ожидание Answer');
+      showToast('✅ Offer создан!');
+      try { navigator.clipboard?.writeText(currentOffer); } catch(e) {}
+    });
+    
+    p.on('connect', function() {
+      isConnected = true;
+      setStatus('online', 'Подключено');
+      updatePeers();
+      showToast('🎉 Соединение установлено!');
+      setTimeout(sendSyncData, 500);
+    });
+    
+    p.on('data', function(chunk) {
+      try { handlePeerMessage(JSON.parse(chunk.toString())); } catch(e) {}
+    });
+    
+    p.on('error', function(err) {
+      console.error('❌ Ошибка peer:', err);
+      if (!isConnected) {
+        setStatus('offline', 'Ошибка: ' + err.message);
+        showToast('❌ Ошибка: ' + err.message);
+      }
+    });
+    
+    p.on('close', function() {
+      isConnected = false;
+      setStatus('offline', 'Отключено');
+      updatePeers();
+    });
+    
+    peer = p;
+  }
+  
+  // --- Обработка Offer ---
+  function processOffer(offerData) {
+    if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+    isConnected = false;
+    isInitiator = false;
+    setStatus('connecting', 'Обработка Offer...');
+    updatePeers();
+    
+    const p = new SimplePeer({
+      initiator: false,
+      trickle: false,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ]
+      }
+    });
+    
+    let answered = false;
+    p.on('signal', function(data) {
+      if (answered) return;
+      answered = true;
+      currentAnswer = JSON.stringify({ type: 'answer', data, peerId: myId });
+      answerDisplay.textContent = currentAnswer;
+      copyAnswerBtn.disabled = false;
+      setStatus('waiting', 'Отправьте Answer');
+      showToast('✅ Answer создан!');
+      try { navigator.clipboard?.writeText(currentAnswer); } catch(e) {}
+    });
+    
+    p.on('connect', function() {
+      isConnected = true;
+      setStatus('online', 'Подключено');
+      updatePeers();
+      showToast('🎉 Соединение установлено!');
+      setTimeout(sendSyncData, 500);
+    });
+    
+    p.on('data', function(chunk) {
+      try { handlePeerMessage(JSON.parse(chunk.toString())); } catch(e) {}
+    });
+    
+    p.on('error', function(err) {
+      console.error('❌ Ошибка peer:', err);
+      if (!isConnected) {
+        setStatus('offline', 'Ошибка: ' + err.message);
+        showToast('❌ Ошибка: ' + err.message);
+      }
+    });
+    
+    p.on('close', function() {
+      isConnected = false;
+      setStatus('offline', 'Отключено');
+      updatePeers();
+    });
+    
+    try {
+      const parsed = typeof offerData === 'string' ? JSON.parse(offerData) : offerData;
+      p.signal(parsed.data);
+    } catch (e) {
+      setStatus('offline', 'Неверный Offer');
+      showToast('❌ Неверный формат Offer');
+      return;
+    }
+    peer = p;
+  }
+  
+  // --- Отправка Answer ---
+  function sendAnswer(answerData) {
+    if (!peer || isConnected || !isInitiator) {
+      showToast('❌ Нет активного Offer');
+      return;
+    }
+    try {
+      const parsed = typeof answerData === 'string' ? JSON.parse(answerData) : answerData;
+      peer.signal(parsed.data);
+      setStatus('connecting', 'Подключение...');
+      showToast('📤 Answer отправлен, ожидание...');
+    } catch (e) {
+      showToast('❌ Неверный формат Answer');
+    }
+  }
+  
+  // --- Копирование ---
+  function copyText(text) {
+    try {
+      if (navigator.clipboard) { navigator.clipboard.writeText(text); return true; }
+    } catch(e) {}
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      return true;
+    } catch(e) { return false; }
+  }
+  
+  // --- Обработчики кнопок ---
+  createOfferBtn.addEventListener('click', function() {
+    createOffer();
+    createOfferBtn.textContent = '⏳...';
+    setTimeout(() => { createOfferBtn.textContent = '📤 Создать Offer'; }, 2000);
+  });
+  
+  copyOfferBtn.addEventListener('click', function() {
+    if (currentOffer && copyText(currentOffer)) {
+      showToast('✅ Offer скопирован!');
+    } else {
+      showToast('❌ Ошибка копирования');
+    }
+  });
+  
+  processOfferBtn.addEventListener('click', function() {
+    const offer = offerInput.value.trim();
+    if (!offer) { showToast('❌ Вставьте Offer!'); return; }
+    try { JSON.parse(offer); } catch(e) { showToast('❌ Неверный формат'); return; }
+    processOffer(offer);
+    processOfferBtn.textContent = '⏳...';
+    setTimeout(() => { processOfferBtn.textContent = '📥 Вставить Offer'; }, 2000);
+  });
+  
+  copyAnswerBtn.addEventListener('click', function() {
+    if (currentAnswer && copyText(currentAnswer)) {
+      showToast('✅ Answer скопирован!');
+    } else {
+      showToast('❌ Ошибка копирования');
+    }
+  });
+  
+  submitAnswerBtn.addEventListener('click', function() {
+    const answer = answerInput.value.trim();
+    if (!answer) { showToast('❌ Вставьте Answer!'); return; }
+    try { JSON.parse(answer); } catch(e) { showToast('❌ Неверный формат'); return; }
+    sendAnswer(answer);
+    submitAnswerBtn.textContent = '⏳...';
+    setTimeout(() => { submitAnswerBtn.textContent = '✅ Отправить Answer'; }, 2000);
+  });
+  
+  // --- Добавление задач ---
+  function addTodo(text) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const todo = { id: nextTodoId++, text: trimmed };
+    todosData.push(todo);
+    renderTodos();
+    saveData();
+    if (peer && isConnected) {
+      peer.send(JSON.stringify({ type: 'add', collection: 'todos', payload: todo }));
+    }
+    if (channel) {
+      channel.postMessage({ type: 'add', collection: 'todos', payload: todo, from: myId });
+    }
+  }
+  
+  addTodoBtn.addEventListener('click', function() {
+    if (todoInput.value.trim()) { addTodo(todoInput.value); todoInput.value = ''; }
+  });
+  todoInput.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter' && todoInput.value.trim()) { addTodo(todoInput.value); todoInput.value = ''; }
+  });
+  
+  // --- Отправка сообщений ---
+  function sendMessage(text) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const msg = {
+      id: Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      author: myId,
+      text: trimmed,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    messagesData.push(msg);
+    renderMessages();
+    saveData();
+    if (peer && isConnected) {
+      peer.send(JSON.stringify({ type: 'add', collection: 'messages', payload: msg }));
+    }
+    if (channel) {
+      channel.postMessage({ type: 'add', collection: 'messages', payload: msg, from: myId });
+    }
+  }
+  
+  sendChatBtn.addEventListener('click', function() {
+    if (chatInput.value.trim()) { sendMessage(chatInput.value); chatInput.value = ''; }
+  });
+  chatInput.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter' && chatInput.value.trim()) { sendMessage(chatInput.value); chatInput.value = ''; }
+  });
+  
+  // --- Инициализация ---
+  renderTodos();
+  renderMessages();
+  setStatus('offline', 'Готов к подключению');
+  updatePeers();
+  
+  console.log('📱 Для подключения между устройствами:');
+  console.log('  1. Один нажимает "Создать Offer" и копирует код');
+  console.log('  2. Другой вставляет Offer → получает Answer');
+  console.log('  3. Первый вставляет Answer → соединение установлено');
+  console.log('💡 Между вкладками синхронизация автоматическая');
+  
+})();
+</script>
+</body>
+</html>
